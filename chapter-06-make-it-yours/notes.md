@@ -1,16 +1,65 @@
 # Chapter 6 — My Notes
 
-## Custom Dataset I Tried
+## The Whole Course: What I Built
+
+| Chapter | What I Built | Key Takeaway |
+|---------|-------------|-------------|
+| 1 — Bigram | | |
+| 2 — Attention | | |
+| 3 — Transformer | | |
+| 4 — Scaling | | |
+| 5 — Generation | | |
+| 6 — Make It Yours | | |
 
 
-## BPE vs Character-Level Tokenization Observations
+## Custom Dataset Experiments
+
+### What data I tried:
 
 
-## Experiments
+### How I prepared it:
 
-| Experiment | What I Changed | What Happened |
-|-----------|---------------|---------------|
-|           |               |               |
+
+### What the model produced:
+
+
+### What surprised me:
+
+
+## BPE vs Character-Level Tokenization
+
+### Compression ratio I observed:
+
+
+### Effect on output quality:
+
+
+### Effect on training speed:
+
+
+## Hyperparameter Experiments
+
+| Experiment | What I Changed | Train Loss | Val Loss | Output Quality | Notes |
+|-----------|---------------|-----------|---------|---------------|-------|
+| Baseline (Ch4 defaults) | Nothing | | | | |
+| | | | | | |
+| | | | | | |
+| | | | | | |
+| | | | | | |
+
+
+## Architecture Experiments
+
+### Positional encoding (learned vs sinusoidal):
+
+
+### Activation function (ReLU vs GELU):
+
+
+### Weight tying:
+
+
+### Other changes I tried:
 
 
 ## Reflections on the Whole Journey
@@ -24,14 +73,49 @@
 ### How this connects to real LLM products I use
 
 
-## My Answers to "Think About It"
+### What surprised me most about how LLMs work
 
-1. Character-level vs BPE tradeoffs:
 
-2. Why pretraining + fine-tuning:
+## Answers to "Think About It" (Chapter 6)
 
-3. Scaling laws intuition:
+### 1. Where does "understanding" live in the model?
 
-4. What instruction tuning adds:
 
-5. What I'd build next:
+### 2. Would training on all text produce real understanding?
+
+
+### 3. What changes during instruction tuning?
+
+
+### 4. Why does the transformer architecture work for everything?
+
+
+### 5. What feels different about AI now that I've built one?
+
+
+## Answers to Earlier "Think About It" Questions
+
+### Chapter 1 — Bigram
+_Pick any questions from Ch1 that stuck with you._
+
+
+### Chapter 2 — Attention
+_Pick any questions from Ch2 that stuck with you._
+
+
+### Chapter 3 — Transformer
+_Pick any questions from Ch3 that stuck with you._
+
+
+### Chapter 4 — Scaling
+_Pick any questions from Ch4 that stuck with you._
+
+
+### Chapter 5 — Generation
+_Pick any questions from Ch5 that stuck with you._
+
+
+## What I'd Explore Next
+
+
+## Resources I Found Helpful
