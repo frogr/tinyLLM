@@ -320,7 +320,10 @@ class TransformerLanguageModel(nn.Module):
         #   - blocks (nn.Sequential of Block modules)
         #   - ln_f (final layer norm)
         #   - lm_head (linear projection to vocab_size)
-        pass
+
+        # PLACEHOLDER: simple embedding so the file runs before you implement this TODO.
+        # Replace this entire block with the full implementation.
+        self._placeholder = nn.Embedding(vocab_size, vocab_size)
         # --- END TODO 4 __init__ ---
 
     def forward(self, idx, targets=None):
@@ -340,8 +343,8 @@ class TransformerLanguageModel(nn.Module):
         #   loss = F.cross_entropy(logits, targets)
 
         B, T = idx.shape
-        # Placeholder: just use a simple embedding (replace with full implementation!)
-        logits = torch.zeros(B, T, vocab_size, device=device)
+        # PLACEHOLDER: simple bigram model — replace with full transformer!
+        logits = self._placeholder(idx)    # (B, T, vocab_size)
 
         if targets is None:
             loss = None

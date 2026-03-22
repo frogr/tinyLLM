@@ -1,15 +1,14 @@
 """
-Chapter 6 -- Make It Yours (Solution)
+Chapter 6 — Make It Yours (Solution)
 
-Complete working implementation with:
-  - Custom data loading with text preparation
-  - BPE tokenizer built from scratch
+Complete working code with:
+  - BPE tokenizer implemented from scratch
+  - Custom dataset support
   - Full GPT model with generation
-  - Support for switching between character-level and BPE tokenization
+
+This demonstrates all the TODOs from exercises.py filled in.
 
 Run with: python solution.py
-
-To use your own data, change DATA_PATH below.
 """
 
 import torch
@@ -31,13 +30,8 @@ else:
 print(f"Using device: {device}")
 
 # ============================================================================
-# Configuration
-# ============================================================================
-DATA_PATH = '../data/input.txt'  # Change this to your own text file
-USE_BPE = True                   # True = BPE tokenization, False = character-level
-NUM_BPE_MERGES = 300             # Number of BPE merges (bigger = larger vocab, more compression)
-
 # Hyperparameters
+# ============================================================================
 batch_size = 64
 block_size = 256
 max_iters = 5000
@@ -52,221 +46,177 @@ dropout = 0.2
 torch.manual_seed(1337)
 
 # ============================================================================
-# Data Loading
+# Dataset Loading
 # ============================================================================
-def prepare_text_file(filepath):
-    """Load and clean a text file."""
-    with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+
+def prepare_text(filepath, max_chars=None):
+    """Load and clean a text file for training."""
+    with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
         text = f.read()
     text = text.replace('\r\n', '\n').replace('\r', '\n')
-    text = text.replace('\x00', '')
-    text = re.sub(r'\n{4,}', '\n\n\n', text)
-    text = text.strip()
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    if max_chars is not None:
+        text = text[:max_chars]
     return text
 
 
-print(f"Loading data from: {DATA_PATH}")
-text = prepare_text_file(DATA_PATH)
-print(f"Dataset size: {len(text):,} characters")
+# Change this path to train on different text
+data_path = '../data/input.txt'
+text = prepare_text(data_path)
+print(f"Loaded {len(text):,} characters from {data_path}")
 print(f"First 200 characters:\n{text[:200]}\n")
 
+
 # ============================================================================
-# BPE Tokenizer -- Complete Implementation
+# BPE Tokenizer — Complete Implementation
 # ============================================================================
 
-class SimpleBPE:
-    """A minimal BPE tokenizer for learning purposes.
+class CharTokenizer:
+    """Simple character-level tokenizer (baseline)."""
 
-    This implements the core BPE algorithm:
-    1. Start with character-level tokens
-    2. Repeatedly find and merge the most common adjacent pair
-    3. Build up a vocabulary of subword tokens
-
-    Production tokenizers (tiktoken, SentencePiece) do the same thing but
-    operate on bytes, handle Unicode edge cases, and are written in C/Rust
-    for speed.
-    """
-
-    def __init__(self, num_merges=200):
-        self.num_merges = num_merges
-        self.merges = {}         # (token_a, token_b) -> new_token_id
-        self.vocab = {}          # token_id -> string
-        self.inverse_vocab = {}  # string -> token_id
-
-    def _get_pair_counts(self, token_ids):
-        """Count how often each pair of adjacent tokens appears.
-
-        This is the core operation of BPE training. We scan through the entire
-        token sequence and count every adjacent pair. The most frequent pair
-        will be our next merge.
-
-        Example:
-            [1, 2, 3, 1, 2] -> {(1,2): 2, (2,3): 1, (3,1): 1}
-        """
-        counts = Counter()
-        for i in range(len(token_ids) - 1):
-            pair = (token_ids[i], token_ids[i + 1])
-            counts[pair] += 1
-        return counts
-
-    def _merge(self, token_ids, pair, new_id):
-        """Replace all occurrences of a pair with a new token ID.
-
-        Walk through the list left to right. When we see pair[0] followed by
-        pair[1], we replace both with new_id and skip ahead. Otherwise, we
-        keep the current token.
-
-        Example:
-            [1, 2, 3, 1, 2], pair=(1,2), new_id=99 -> [99, 3, 99]
-        """
-        new_ids = []
-        i = 0
-        while i < len(token_ids):
-            # Check if current position matches the pair
-            if (i < len(token_ids) - 1 and
-                    token_ids[i] == pair[0] and
-                    token_ids[i + 1] == pair[1]):
-                new_ids.append(new_id)
-                i += 2  # Skip both tokens in the pair
-            else:
-                new_ids.append(token_ids[i])
-                i += 1
-        return new_ids
-
-    def train(self, text):
-        """Learn BPE merges from the training text.
-
-        The algorithm:
-        1. Build a character-level vocabulary (every unique character gets an ID)
-        2. Convert the entire text to character-level token IDs
-        3. Find the most frequent adjacent pair
-        4. Merge it into a new token, add to vocabulary
-        5. Repeat steps 3-4 for num_merges iterations
-        """
-        # Step 1: Build initial character-level vocabulary
-        chars = sorted(list(set(text)))
-        self.vocab = {i: ch for i, ch in enumerate(chars)}
-        self.inverse_vocab = {ch: i for i, ch in enumerate(chars)}
-        base_vocab_size = len(chars)
-
-        # Step 2: Convert entire text to character-level token IDs
-        token_ids = [self.inverse_vocab[ch] for ch in text]
-        print(f"BPE training: starting with {base_vocab_size} character tokens")
-        print(f"Text length: {len(token_ids):,} tokens before merging")
-
-        # Step 3-5: Iteratively merge the most common pair
-        for i in range(self.num_merges):
-            # Count all adjacent pairs
-            counts = self._get_pair_counts(token_ids)
-            if not counts:
-                print(f"No more pairs to merge after {i} merges")
-                break
-
-            # Find the most frequent pair
-            best_pair = max(counts, key=counts.get)
-
-            # Create a new token ID for the merged pair
-            new_id = base_vocab_size + i
-
-            # Replace all occurrences of the pair in our token list
-            token_ids = self._merge(token_ids, best_pair, new_id)
-
-            # Record the merge rule and update vocabulary
-            self.merges[best_pair] = new_id
-            self.vocab[new_id] = self.vocab[best_pair[0]] + self.vocab[best_pair[1]]
-
-            # Print progress every 50 merges
-            if (i + 1) % 50 == 0:
-                merged_str = self.vocab[new_id]
-                pair_str = f"'{self.vocab[best_pair[0]]}' + '{self.vocab[best_pair[1]]}'"
-                print(f"  Merge {i+1:3d}/{self.num_merges}: "
-                      f"{pair_str:30s} -> '{merged_str}' "
-                      f"(count: {counts[best_pair]})")
-
-        actual_vocab_size = len(self.vocab)
-        compression = len(text) / max(len(token_ids), 1)
-        print(f"\nBPE training complete:")
-        print(f"  Vocabulary size: {actual_vocab_size} tokens")
-        print(f"  Text length: {len(token_ids):,} tokens after merging")
-        print(f"  Compression ratio: {compression:.2f}x")
-
-        # Show some interesting merged tokens
-        print(f"\n  Sample merged tokens:")
-        merge_items = list(self.merges.items())
-        # Show first few and last few merges
-        for idx in [0, 1, 2, len(merge_items)//2, -3, -2, -1]:
-            if abs(idx) <= len(merge_items):
-                pair, new_id = merge_items[idx]
-                token_str = self.vocab[new_id]
-                print(f"    Token {new_id}: '{token_str}'")
-
-        return actual_vocab_size
+    def __init__(self, text):
+        self.chars = sorted(list(set(text)))
+        self.vocab_size = len(self.chars)
+        self.stoi = {ch: i for i, ch in enumerate(self.chars)}
+        self.itos = {i: ch for i, ch in enumerate(self.chars)}
 
     def encode(self, text):
-        """Encode text into token IDs using learned merge rules.
+        return [self.stoi[c] for c in text]
 
-        Important: merges must be applied in the same order as they were learned
-        during training. The first merge (most frequent pair) is applied first,
-        then the second, and so on.
-        """
-        # Start with character-level tokens
-        token_ids = []
-        for ch in text:
-            if ch in self.inverse_vocab:
-                token_ids.append(self.inverse_vocab[ch])
-            # Skip unknown characters
+    def decode(self, ids):
+        return ''.join([self.itos[i] for i in ids])
 
-        # Apply merges in training order
+
+class SimpleBPE:
+    """A minimal BPE tokenizer built from scratch.
+
+    The algorithm:
+      1. Start with individual characters as tokens
+      2. Find the most frequent adjacent pair
+      3. Merge it into a new token
+      4. Repeat until desired vocabulary size
+    """
+
+    def __init__(self, text, num_merges=256):
+        # Step 1: Build base vocabulary from individual characters
+        self.chars = sorted(list(set(text)))
+        self.base_vocab_size = len(self.chars)
+        self.stoi = {ch: i for i, ch in enumerate(self.chars)}
+        self.itos = {i: ch for i, ch in enumerate(self.chars)}
+
+        # Convert text to token IDs
+        token_ids = [self.stoi[c] for c in text]
+
+        # Step 2: Perform merges
+        self.merges = {}  # (id1, id2) -> new_id
+
+        print(f"Starting BPE training: {self.base_vocab_size} base chars, {num_merges} merges")
+
+        for i in range(num_merges):
+            # Count all adjacent pairs
+            pair_counts = Counter()
+            for j in range(len(token_ids) - 1):
+                pair = (token_ids[j], token_ids[j + 1])
+                pair_counts[pair] += 1
+
+            if not pair_counts:
+                print(f"No more pairs after {i} merges.")
+                break
+
+            # Find the most common pair
+            best_pair, best_count = pair_counts.most_common(1)[0]
+
+            if best_count < 2:
+                print(f"Most common pair appears only {best_count} time(s). Stopping.")
+                break
+
+            # Create new token for the merged pair
+            new_id = self.base_vocab_size + i
+            self.merges[best_pair] = new_id
+            self.itos[new_id] = self.itos[best_pair[0]] + self.itos[best_pair[1]]
+            self.stoi[self.itos[new_id]] = new_id
+
+            # Replace all occurrences of best_pair with new_id
+            new_ids = []
+            j = 0
+            while j < len(token_ids):
+                if (j < len(token_ids) - 1
+                        and token_ids[j] == best_pair[0]
+                        and token_ids[j + 1] == best_pair[1]):
+                    new_ids.append(new_id)
+                    j += 2
+                else:
+                    new_ids.append(token_ids[j])
+                    j += 1
+            token_ids = new_ids
+
+            # Progress reporting
+            if (i + 1) % 50 == 0 or i < 5:
+                merged_str = self.itos[new_id]
+                ratio = len(text) / len(token_ids)
+                print(f"  Merge {i+1:4d}: {self.itos[best_pair[0]]!r} + {self.itos[best_pair[1]]!r} "
+                      f"-> {merged_str!r} (count: {best_count:,}, "
+                      f"tokens: {len(token_ids):,}, ratio: {ratio:.2f}x)")
+
+        self.vocab_size = self.base_vocab_size + len(self.merges)
+        final_ratio = len(text) / len(token_ids)
+        print(f"BPE complete. Vocab: {self.vocab_size}, "
+              f"Compression: {final_ratio:.2f}x ({len(text):,} chars -> {len(token_ids):,} tokens)\n")
+
+    def encode(self, text):
+        """Encode text to BPE token IDs by applying learned merges in order."""
+        ids = [self.stoi[c] for c in text if c in self.stoi]
         for pair, new_id in self.merges.items():
-            token_ids = self._merge(token_ids, pair, new_id)
+            new_ids = []
+            j = 0
+            while j < len(ids):
+                if j < len(ids) - 1 and ids[j] == pair[0] and ids[j + 1] == pair[1]:
+                    new_ids.append(new_id)
+                    j += 2
+                else:
+                    new_ids.append(ids[j])
+                    j += 1
+            ids = new_ids
+        return ids
 
-        return token_ids
-
-    def decode(self, token_ids):
-        """Decode token IDs back to text."""
-        return ''.join(self.vocab.get(id, '?') for id in token_ids)
-
-    @property
-    def vocab_size(self):
-        return len(self.vocab)
+    def decode(self, ids):
+        """Decode BPE token IDs back to text."""
+        return ''.join([self.itos[i] for i in ids])
 
 
 # ============================================================================
-# Choose Tokenizer
+# Choose tokenizer — toggle to compare character-level vs BPE
 # ============================================================================
+USE_BPE = True
+NUM_BPE_MERGES = 256
+
 if USE_BPE:
-    print("\n--- Training BPE tokenizer ---")
-    tokenizer = SimpleBPE(num_merges=NUM_BPE_MERGES)
-    vocab_size = tokenizer.train(text)
-    encode = tokenizer.encode
-    decode = tokenizer.decode
-
-    # Verify round-trip
-    test_str = text[:100]
-    encoded = encode(test_str)
-    decoded = decode(encoded)
-    assert decoded == test_str, f"Round-trip failed!\n  Original: {test_str}\n  Decoded:  {decoded}"
-    print(f"\nRound-trip test passed (100 chars -> {len(encoded)} tokens -> 100 chars)")
+    print("--- Building BPE tokenizer ---")
+    tokenizer = SimpleBPE(text, num_merges=NUM_BPE_MERGES)
 else:
-    print("Using character-level tokenizer")
-    chars = sorted(list(set(text)))
-    vocab_size = len(chars)
-    stoi = {ch: i for i, ch in enumerate(chars)}
-    itos = {i: ch for i, ch in enumerate(chars)}
-    encode = lambda s: [stoi[c] for c in s]
-    decode = lambda l: ''.join([itos[i] for i in l])
+    print("--- Using character-level tokenizer ---")
+    tokenizer = CharTokenizer(text)
 
-print(f"\nFinal vocabulary size: {vocab_size}")
+vocab_size = tokenizer.vocab_size
+print(f"Vocabulary size: {vocab_size}")
+
+# Verify round-trip
+test_str = text[:100]
+encoded = tokenizer.encode(test_str)
+decoded = tokenizer.decode(encoded)
+assert decoded == test_str, f"Round-trip failed!\n  Original: {test_str!r}\n  Decoded:  {decoded!r}"
+print(f"Round-trip OK: {len(test_str)} chars -> {len(encoded)} tokens "
+      f"({len(test_str)/len(encoded):.2f}x compression)\n")
 
 
 # ============================================================================
 # Data Preparation
 # ============================================================================
-data = torch.tensor(encode(text), dtype=torch.long)
+data = torch.tensor(tokenizer.encode(text), dtype=torch.long)
 n = int(0.9 * len(data))
 train_data = data[:n]
 val_data = data[n:]
-print(f"Train: {len(train_data):,} tokens | Val: {len(val_data):,} tokens")
+print(f"Train: {len(train_data):,} tokens | Val: {len(val_data):,} tokens\n")
 
 
 def get_batch(split):
@@ -403,14 +353,20 @@ class GPT(nn.Module):
 # ============================================================================
 # Training
 # ============================================================================
-print("\n--- Creating model ---")
 model = GPT().to(device)
 n_params = sum(p.numel() for p in model.parameters())
-print(f"Model has {n_params:,} parameters")
+print(f"Model has {n_params:,} parameters\n")
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
-print("\nTraining...")
+# Generate before training
+print("--- Generated text BEFORE training ---")
+context = torch.zeros((1, 1), dtype=torch.long, device=device)
+print(tokenizer.decode(model.generate(context, max_new_tokens=200)[0].tolist()))
+print("--- End ---\n")
+
+# Training loop
+print("Training...")
 for iter in range(max_iters):
     if iter % eval_interval == 0:
         losses = estimate_loss(model)
@@ -423,40 +379,58 @@ for iter in range(max_iters):
     optimizer.step()
 
 losses = estimate_loss(model)
-print(f"Final:      train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+print(f"Final:      train loss {losses['train']:.4f}, val loss {losses['val']:.4f}\n")
+
 
 # ============================================================================
-# Generation
+# Generation — compare settings
 # ============================================================================
-print("\n--- Generated text (temperature=0.8, top_k=50) ---")
-model.eval()
+print("=" * 60)
+print("GENERATION RESULTS")
+print("=" * 60)
+
+# Main generation
+print("\n--- Temperature 0.8 (default) ---")
 context = torch.zeros((1, 1), dtype=torch.long, device=device)
-generated = model.generate(context, max_new_tokens=500, temperature=0.8, top_k=50)
-print(decode(generated[0].tolist()))
-print("--- End ---")
+generated = model.generate(context, max_new_tokens=500, temperature=0.8)[0].tolist()
+print(tokenizer.decode(generated))
 
-# Compare different temperatures
-print("\n--- Temperature comparison ---")
-for temp in [0.5, 0.8, 1.0, 1.5]:
+# Temperature comparison
+print("\n--- Temperature comparison (100 tokens each) ---")
+for temp in [0.3, 0.8, 1.0, 1.5]:
     context = torch.zeros((1, 1), dtype=torch.long, device=device)
-    generated = model.generate(context, max_new_tokens=200, temperature=temp, top_k=50)
-    output = decode(generated[0].tolist())
-    # Show first 100 chars
-    preview = output[:100].replace('\n', ' ')
-    print(f"  temp={temp}: {preview}...")
+    generated = model.generate(context, max_new_tokens=100, temperature=temp)[0].tolist()
+    print(f"\nTemp={temp}:")
+    print(tokenizer.decode(generated))
+
+# Top-k comparison
+print("\n--- Top-k comparison (100 tokens each) ---")
+for k in [5, 20, 50]:
+    context = torch.zeros((1, 1), dtype=torch.long, device=device)
+    generated = model.generate(context, max_new_tokens=100, temperature=0.8, top_k=k)[0].tolist()
+    print(f"\nTop-k={k}:")
+    print(tokenizer.decode(generated))
+
+print("\n--- End ---")
 
 # ============================================================================
-# Save the model (optional)
+# Tokenizer stats
 # ============================================================================
-save_path = 'model.pt'
-torch.save({
-    'model_state_dict': model.state_dict(),
-    'vocab_size': vocab_size,
-    'n_embd': n_embd,
-    'n_head': n_head,
-    'n_layer': n_layer,
-    'block_size': block_size,
-    'use_bpe': USE_BPE,
-}, save_path)
-print(f"\nModel saved to {save_path}")
-print("To load later: checkpoint = torch.load('model.pt')")
+if USE_BPE:
+    print("\n--- BPE Tokenizer Stats ---")
+    sample = text[:1000]
+    char_tokens = len(sample)
+    bpe_tokens = len(tokenizer.encode(sample))
+    print(f"Sample of {char_tokens} characters encodes to {bpe_tokens} BPE tokens")
+    print(f"Compression ratio: {char_tokens / bpe_tokens:.2f}x")
+    print(f"Vocabulary size: {tokenizer.vocab_size} "
+          f"({tokenizer.base_vocab_size} base + {len(tokenizer.merges)} merges)")
+
+    # Show some learned tokens
+    print("\nSome learned BPE tokens (most common merges first):")
+    for i, ((id1, id2), new_id) in enumerate(tokenizer.merges.items()):
+        if i >= 20:
+            break
+        print(f"  {tokenizer.itos[new_id]!r}")
+
+print("\nDone!")
